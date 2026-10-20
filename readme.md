@@ -1,102 +1,96 @@
-Antes de comenzar, asegúrate de tener instalado:
+# Kafka Example — mensajería distribuida con Apache Kafka
 
-Docker
-Docker Compose
+Demo de dos aplicaciones Spring Boot que se comunican exclusivamente por Kafka, más un
+front-end React. La actividad del Módulo 8 añade una **consulta de clientes** que viaja por
+Kafka con patrón *request/reply* y correlación por `requestId`.
 
-Verifica con:
+## Módulos
 
-docker --version
-docker-compose --version
-▶ Ejecutar el entorno
+| Módulo | Puerto | Rol |
+| --- | --- | --- |
+| `str-producer` | 8000 | API REST; publica mensajes y correlaciona respuestas |
+| `str-consumer` | 8100 | Consume, procesa y responde |
 
-Desde la carpeta donde está tu docker-compose.yml, ejecuta:
+## Tópicos
 
-docker-compose up -d
+| Tópico | Particiones | Réplicas | Productor | Consumidor |
+| --- | --- | --- | --- | --- |
+| `str-topic` | 2 | 1 | `StringProducerService` | `StrConsumerListener` (`group-1`, `group-2`) |
+| `str-topic-response` | 2 | 1 | `StrConsumerListener.listener2` | `ResponseListener` (`group-1`) |
+| `cliente-consulta` | 3 | 1 | `ClienteQueryPublisher` | `ClienteQueryListener` (`cliente-query-group`) |
+| `cliente-consulta-respuesta` | 3 | 1 | `ClienteQueryListener` | `ClienteQueryResponseListener` (`cliente-query-response-group`) |
 
-Esto levantará los servicios en segundo plano.
+Los tópicos se declaran con `TopicBuilder` en el `KafkaAdminConfig` de cada módulo.
+La réplica es 1 porque el clúster de desarrollo tiene un único broker; con más brokers basta
+subir `.replicas(n)` sin tocar el código.
 
-▶ Verificar que todo esté corriendo
-1. Ver contenedores activos
-docker ps
+## Endpoints (`str-producer`)
 
-Deberías ver:
+| Método | Ruta | Descripción |
+| --- | --- | --- |
+| `GET` | `/producer/menu?message=…` | Flujo original de menús (partición 0 sin respuesta, partición 1 responde) |
+| `GET` | `/producer/test?message=…` | Igual que `/menu`, para pruebas |
+| `GET` | `/producer/clientes?filtro=…` | **Nuevo.** Consulta de clientes vía Kafka |
 
-zookeeper
-kafka
-kafdrop
-2. Ver logs (opcional)
+### Consulta de clientes
 
-Para revisar que Kafka inició correctamente:
+```
+GET http://localhost:8000/producer/clientes?filtro=vegan
 
-docker logs kafka
+200 OK
+{
+  "requestId": "…",
+  "filtro": "vegan",
+  "total": 2,
+  "clientes": [ { "id": 1, "nombre": "…", "email": "…", "ciudad": "…", "telefono": "…" } ],
+  "kafka": {
+    "topicSolicitud": "cliente-consulta",
+    "topicRespuesta": "cliente-consulta-respuesta",
+    "partition": 0,
+    "offset": 9,
+    "key": "vegan"
+  },
+  "latenciaMs": 163,
+  "procesadoEn": "…"
+}
+```
 
-O todos los servicios:
+Secuencia:
 
-docker-compose logs -f
+1. `ClienteQueryPublisher` genera un `requestId` y registra un `CompletableFuture`.
+2. Publica el JSON en `cliente-consulta` con `key = filtro` (misma consulta → misma partición).
+3. `ClienteQueryListener` (nuevo, en `str-consumer`) busca con `ClienteQueryService` /
+   `ClienteRepository` y responde en `cliente-consulta-respuesta`.
+4. `ClienteQueryResponseListener` (en `str-producer`) completa el future por `requestId`.
+5. Si no hay respuesta en 10 s, el endpoint devuelve `504` con `{"error":"TIMEOUT"}`.
 
-▶ Acceder a Kafdrop (UI de Kafka)
+## Ejecución
 
-Abre en tu navegador:
+Requisitos: Docker, Docker Compose y **JDK 17** (Spring Boot 3.3.4 no compila con JDK 27).
 
-👉 http://localhost:19000
+```bash
+# 1. Kafka, Zookeeper y Kafdrop
+docker compose up -d
+# Kafdrop -> http://localhost:19000
 
-Desde aquí puedes:
+# 2. Back-end
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 
-Ver topics
-Crear topics
-Ver mensajes
-Monitorear brokers
+cd str-producer && ./mvnw spring-boot:run     # :8000
+cd str-consumer && ./mvnw spring-boot:run     # :8100
+```
 
-▶ Crear un topic (desde consola)
+Si el puerto 8000 está ocupado:
 
-Entra al contenedor de Kafka:
+```bash
+java -jar str-producer/target/str-producer-0.0.1-SNAPSHOT.jar --server.port=8001
+# y en el front: VITE_API_URL=http://localhost:8001 npm run dev
+```
 
-docker exec -it kafka bash
+## Notas
 
-Crear un topic:
-
-kafka-topics --create \
-  --topic test-topic \
-  --bootstrap-server kafka:29092 \
-  --partitions 1 \
-  --replication-factor 1
-
-Listar topics:
-
-kafka-topics --list --bootstrap-server kafka:29092
-
-
-▶ Enviar mensajes (Producer)
-kafka-console-producer \
-  --broker-list kafka:29092 \
-  --topic test-topic
-
-Escribe mensajes y presiona Enter.
-
-
-▶ Consumir mensajes (Consumer)
-
-En otra terminal:
-
-docker exec -it kafka bash
-kafka-console-consumer \
-  --bootstrap-server kafka:29092 \
-  --topic test-topic \
-  --from-beginning
- 
-
-▶ Detener el entorno
-
-docker-compose down
-docker-compose down -v
-docker system prune -f
-
-
-__consumer_offsets
-
-| Tipo            | Qué significa              |
-| --------------- | -------------------------- |
-| join group      | se conectó un consumer     |
-| assignment      | Kafka repartió particiones |
-| commit          | guardó progreso            |
-| commit otra vez | volvió a guardar progreso  |
+- `KAFKA_AUTO_CREATE_TOPICS_ENABLE` está en `false` en `docker-compose.yml`. Sin eso, Kafka
+  creaba `str-topic` con una sola partición al primer envío y los envíos explícitos a la
+  partición 1 fallaban.
+- `str-consumer/…/services/clientes.java` es código muerto previo (duplica `OrderProcessor`);
+  se conserva para no alterar el material original.
