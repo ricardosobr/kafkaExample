@@ -28,8 +28,16 @@ public class StringConsumerConfig {
         var configs = new HashMap<String,Object>();
         configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG,kafkaProperties.getBootstrapServers());
         configs.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        configs.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,StringDeserializer.class);
+        configs.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         return new DefaultKafkaConsumerFactory<>(configs);
+    }
+
+    // Fabrica de contenedores estandar para @KafkaListener generales
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String,String> kafkaListenerContainerFactory(ConsumerFactory<String,String> consumerFactory){
+        var factory = new ConcurrentKafkaListenerContainerFactory<String,String>();
+        factory.setConsumerFactory(consumerFactory);
+        return factory;
     }
 
     @Bean
@@ -38,6 +46,20 @@ public class StringConsumerConfig {
         factory.setConsumerFactory(consumerFactory);
         factory.setRecordInterceptor(validMessage());
         return factory;
+    }
+
+    @Bean
+    public ProducerFactory<String,String> producerFactory(){
+        var configs = new HashMap<String,Object>();
+        configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG,kafkaProperties.getBootstrapServers());
+        configs.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configs.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        return new DefaultKafkaProducerFactory<>(configs);
+    }
+
+    @Bean
+    public KafkaTemplate<String,String> kafkaTemplate(ProducerFactory<String,String> producerFactory){
+        return new KafkaTemplate<>(producerFactory);
     }
 
     private RecordInterceptor<String,String> validMessage(){
