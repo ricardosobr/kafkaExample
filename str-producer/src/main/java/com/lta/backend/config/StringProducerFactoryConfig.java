@@ -23,10 +23,8 @@ public class StringProducerFactoryConfig {
     @Bean
     public ProducerFactory<String,String> producerFactory(){
         var configs = new HashMap<String,Object>();
-
         // Dirección del broker de Kafka
         configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG,kafkaProperties.getBootstrapServers());
-
         // Serializadores (convierte String → bytes)
         configs.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configs.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,StringSerializer.class);

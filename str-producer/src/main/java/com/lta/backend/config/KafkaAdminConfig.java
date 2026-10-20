@@ -19,16 +19,22 @@ public class KafkaAdminConfig {
     @Bean
     public KafkaAdmin kafkaAdmin(){
         var configs = new HashMap<String,Object>();
-        configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG,kafkaProperties.getBootstrapServers());
+        String bootstrap = (kafkaProperties.getBootstrapServers() != null && !kafkaProperties.getBootstrapServers().isEmpty())
+                ? String.join(",", kafkaProperties.getBootstrapServers())
+                : "localhost:9092";
+        configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap);
         return new KafkaAdmin(configs);
     }
 
-    // Crea automáticamente el tópico "str-topic" al iniciar la aplicación
+    // Crea automáticamente los tópicos al iniciar la aplicación
+    // Réplica 1 porque el clúster local tiene un solo broker de Kafka
     @Bean
     public KafkaAdmin.NewTopics topics(){
         return new KafkaAdmin.NewTopics(
             TopicBuilder.name("str-topic").partitions(2).replicas(1).build(),
-            TopicBuilder.name("str-topic-response").partitions(2).replicas(1).build()
+            TopicBuilder.name("str-topic-response").partitions(2).replicas(1).build(),
+            TopicBuilder.name("cliente-consulta").partitions(3).replicas(1).build(),
+            TopicBuilder.name("cliente-consulta-respuesta").partitions(3).replicas(1).build()
         );
     }
 }
