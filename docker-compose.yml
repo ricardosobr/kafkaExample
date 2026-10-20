@@ -28,6 +28,9 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
 
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # Los topics se declaran en KafkaAdminConfig. Sin esto, Kafka crea
+      # "str-topic" con 1 partición y los envíos a la partición 1 fallan.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
 
   kafdrop:
     image: obsidiandynamics/kafdrop:latest
