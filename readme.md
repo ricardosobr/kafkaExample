@@ -8,7 +8,7 @@ Kafka con patrón *request/reply* y correlación por `requestId`.
 
 | Módulo | Puerto | Rol |
 | --- | --- | --- |
-| `str-producer` | 8000 | API REST; publica mensajes y correlaciona respuestas |
+| `str-producer` | 8000 (8001 si el 8000 está ocupado) | API REST; publica mensajes y correlaciona respuestas |
 | `str-consumer` | 8100 | Consume, procesa y responde |
 
 ## Tópicos
@@ -25,6 +25,8 @@ La réplica es 1 porque el clúster de desarrollo tiene un único broker; con m�
 subir `.replicas(n)` sin tocar el código.
 
 ## Endpoints (`str-producer`)
+
+Base: `http://localhost:8000`, o `http://localhost:8001` si se usó el puerto alternativo.
 
 | Método | Ruta | Descripción |
 | --- | --- | --- |
@@ -66,26 +68,39 @@ Secuencia:
 
 ## Ejecución
 
-Requisitos: Docker, Docker Compose y **JDK 17** (Spring Boot 3.3.4 no compila con JDK 27).
+Requisitos: Docker, Docker Compose y **JDK 17**, usado para compilar y ejecutar esta práctica.
 
 ```bash
-# 1. Kafka, Zookeeper y Kafdrop
+# 1. Kafka, Zookeeper y Kafdrop (desde kafkaExample)
 docker compose up -d
 # Kafdrop -> http://localhost:19000
 
-# 2. Back-end
+# 2. Back-end: una terminal por servicio, desde la raíz de la actividad
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 
-cd str-producer && ./mvnw spring-boot:run     # :8000
-cd str-consumer && ./mvnw spring-boot:run     # :8100
+# terminal A
+cd kafkaExample/str-producer && ./mvnw spring-boot:run     # :8000
+
+# terminal B
+cd kafkaExample/str-consumer && ./mvnw spring-boot:run     # :8100
 ```
 
-Si el puerto 8000 está ocupado:
+Si el puerto 8000 está ocupado, arranca el productor con el puerto 8001 desde el código:
 
 ```bash
-java -jar str-producer/target/str-producer-0.0.1-SNAPSHOT.jar --server.port=8001
-# y en el front: VITE_API_URL=http://localhost:8001 npm run dev
+cd kafkaExample/str-producer
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--server.port=8001"
 ```
+
+Y apunta el front a ese puerto:
+
+```bash
+cd frontProducerKafka
+VITE_API_URL=http://localhost:8001 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
+
+El consumidor no cambia: sigue en 8100. Si prefieres ejecutar el JAR, compílalo antes con
+`./mvnw package` y luego `"$JAVA_HOME/bin/java" -jar target/str-producer-0.0.1-SNAPSHOT.jar --server.port=8001`.
 
 ## Notas
 
